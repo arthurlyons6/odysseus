@@ -223,6 +223,14 @@ class ModelDiscovery:
         )
         return {"hosts": hosts, "items": items}
 
+    def get_endpoints(self) -> List[Dict[str, Any]]:
+        """Get simple list of endpoints for warmup pinging."""
+        try:
+            discovery = self.discover_models()
+            return discovery.get("items", [])
+        except Exception:
+            return []
+
     def get_providers(self) -> Dict[str, Any]:
         """Get all available providers"""
         discovery = self.discover_models()

@@ -50,9 +50,9 @@ class EmbeddingClient:
         self._dim: Optional[int] = None
         # Short connect timeout so a DOWN embedding endpoint (e.g. Ollama not
         # running on :11434) fast-fails to the local FastEmbed fallback instead
-        # of stalling startup ~30s per probe. Read stays generous for a real
-        # endpoint (embedding a short string returns in well under a second).
-        self._client = httpx.Client(timeout=httpx.Timeout(connect=3.0, read=10.0, write=5.0, pool=3.0))
+        # of stalling startup ~30s per probe. Read timeout generous for batch
+        # embedding (66 tools x 2 batches = ~20-30s on CPU-only Ollama).
+        self._client = httpx.Client(timeout=httpx.Timeout(connect=3.0, read=60.0, write=10.0, pool=5.0))
 
     def get_sentence_embedding_dimension(self) -> int:
         """Probe the endpoint for embedding dimension if not yet known."""

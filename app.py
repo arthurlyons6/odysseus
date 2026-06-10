@@ -940,16 +940,28 @@ async def _startup_event():
         except Exception as e:
             logger.debug(f"Warmup ping skipped: {e}")
 
-    _startup_tasks.append(asyncio.create_task(_warmup_endpoints()))
-
     # Keep-alive: ping endpoints every 60 seconds to prevent cold starts
     async def _keepalive_loop():
         while True:
             try:
                 await asyncio.sleep(60)
-                await _warmup_endpoints()
-            except Exception as e:
-                logger.warning(f"Keepalive loop error: {e}")
+                # Lightweight ping - just hit known LLM endpoints, no full discovery
+                try:
+                    import httpx
+                    endpoints = model_discovery.get_endpoints() if model_discovery else []
+                    for ep in endpoints[:5]:
+                        url = ep.get("url", "").replace("/chat/completions", "/models")
+                        if url:
+                            try:
+                                async with httpx.AsyncClient(timeout=5.0) as client:
+                                    await client.get(url)
+                                logger.debug(f"Keepalive ping OK: {url}")
+                            except Exception as e:
+                                logger.debug(f"Keepalive ping failed for {url}: {e}")
+                except Exception as e:
+                    logger.debug(f"Keepalive warmup skipped: {e}")
+            except BaseException as e:
+                logger.warning(f"Keepalive loop error: {type(e).__name__}: {e}")
                 await asyncio.sleep(300)  # Back off on error
 
     _startup_tasks.append(asyncio.create_task(_keepalive_loop()))

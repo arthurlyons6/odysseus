@@ -417,6 +417,30 @@ def setup_mcp_routes(mcp_manager: McpManager):
         finally:
             db.close()
 
+    @router.post("/call")
+    async def call_mcp_tool(request: Request):
+        """Call an MCP tool by qualified name.
+
+        Body: {"qualified_name": "mcp__{server_id}__{tool_name}", "arguments": {...}}
+
+        Returns agent_tools-compatible result dict with stdout, stderr, exit_code, images.
+        """
+        require_admin(request)
+        body = await request.json()
+        qualified = body.get("qualified_name", "")
+        arguments = body.get("arguments", {})
+
+        if not qualified.startswith("mcp__"):
+            raise HTTPException(400, "qualified_name must start with 'mcp__'")
+
+        result = await mcp_manager.call_tool(qualified, arguments)
+        return result
+
+
+    @router.get("/call-test")
+    async def call_mcp_test():
+        return {"status": "ok", "message": "call endpoint works"}
+
     # ── OAuth flow for Google MCP servers ──────────────────────────
 
     @router.get("/oauth/authorize/{server_id}")

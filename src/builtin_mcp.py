@@ -74,13 +74,8 @@ _BUILTIN_SERVERS = {
 }
 
 # NPX-based built-in servers (run via npx, not Python)
-_BUILTIN_NPX_SERVERS = {
-    "builtin_browser": {
-        "name": "Built-in: Browser",
-        "command": "npx",
-        "args": ["-y", "@playwright/mcp@latest", "--headless", "--caps", "vision"],
-    },
-}
+# NOTE: builtin_browser removed - we add Playwright manually via API to avoid cancel scope crash
+_BUILTIN_NPX_SERVERS = {}
 
 # Global flag to disable MCP if there are compatibility issues
 MCP_DISABLED = os.environ.get("ODYSSEUS_DISABLE_MCP", "").lower() in ("1", "true", "yes")

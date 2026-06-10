@@ -8,6 +8,10 @@
  *   "browser"        — use Web Speech API for real-time transcription
  *   "local"          — send recording to server /api/stt/transcribe (Whisper)
  *   "endpoint:<id>"  — send recording to server /api/stt/transcribe (API)
+ *
+ * VAD (Voice Activity Detection):
+ *   Uses Web Audio API AnalyserNode to detect silence and auto-stop recording.
+ *   Configurable silence threshold and duration.
  */
 
 let mediaRecorder = null;
@@ -22,6 +26,18 @@ let _browserTranscript = '';
 
 // Cached STT provider — refreshed on settings change
 let _sttProvider = 'disabled';
+
+// VAD (Voice Activity Detection) state
+let _audioContext = null;
+let _analyser = null;
+let _vadInterval = null;
+let _silenceStart = null;
+let _vadEnabled = true;
+const VAD_SILENCE_THRESHOLD = 0.01;  // RMS amplitude threshold (0-1)
+const VAD_SILENCE_DURATION_MS = 2000; // Stop after 2s of silence
+const VAD_MIN_RECORDING_MS = 3000;    // Minimum recording before VAD can stop
+
+
 
 /**
  * Fetch current STT provider from server settings
@@ -54,6 +70,9 @@ function formatTime(seconds) {
  */
 function _resetRecordingUI() {
   isRecording = false;
+  // Clean up VAD
+  _cleanupVAD();
+  
   if (recordingInterval) {
     clearInterval(recordingInterval);
     recordingInterval = null;
@@ -165,17 +184,23 @@ export function startRecording(onFileCreated, showToast, showError) {
   audioChunks = [];
 
   navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(stream => {
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  .then(stream => {
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 
-      mediaRecorder.ondataavailable = event => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
+  // Initialize VAD
+  _initVAD(stream);
 
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(track => track.stop());
+  mediaRecorder.ondataavailable = event => {
+    if (event.data.size > 0) {
+      audioChunks.push(event.data);
+    }
+  };
+
+  mediaRecorder.onstop = async () => {
+    // Clean up VAD
+    _cleanupVAD();
+        
+    stream.getTracks().forEach(track => track.stop());
 
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         const provider = _sttProvider;
@@ -269,6 +294,84 @@ export function init() {
   isRecording = false;
   refreshSttProvider();
 }
+
+// ── VAD (Voice Activity Detection) ──
+
+/**
+ * Initialize Web Audio API for VAD
+ */
+function _initVAD(stream) {
+  try {
+    _audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    _analyser = _audioContext.createAnalyser();
+    _analyser.fftSize = 512;
+    _analyser.smoothingTimeConstant = 0.8;
+    
+    const source = _audioContext.createMediaStreamSource(stream);
+    source.connect(_analyser);
+    
+    _silenceStart = null;
+    
+    _vadInterval = setInterval(_checkVAD, 100);
+    return true;
+  } catch (e) {
+    console.warn('VAD initialization failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Check audio level via AnalyserNode
+ */
+function _checkVAD() {
+  if (!_analyser || !_vadEnabled || !isRecording) return;
+  
+  const dataArray = new Uint8Array(_analyser.frequencyBinCount);
+  _analyser.getByteFrequencyData(dataArray);
+  
+  // Calculate RMS amplitude
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    const normalized = dataArray[i] / 255;
+    sum += normalized * normalized;
+  }
+  const rms = Math.sqrt(sum / dataArray.length);
+  
+  const now = Date.now();
+  const recordingDuration = now - recordingStartTime;
+  
+  if (rms < VAD_SILENCE_THRESHOLD) {
+    // Below threshold - silence detected
+    if (_silenceStart === null) {
+      _silenceStart = now;
+    } else if (recordingDuration > VAD_MIN_RECORDING_MS && 
+               now - _silenceStart > VAD_SILENCE_DURATION_MS) {
+      // Silence duration exceeded - auto-stop
+      console.log('VAD: Silence detected, auto-stopping recording');
+      stopRecording();
+    }
+  } else {
+    // Voice detected - reset silence timer
+    _silenceStart = null;
+  }
+}
+
+/**
+ * Clean up VAD resources
+ */
+function _cleanupVAD() {
+  if (_vadInterval) {
+    clearInterval(_vadInterval);
+    _vadInterval = null;
+  }
+  if (_audioContext) {
+    _audioContext.close().catch(() => {});
+    _audioContext = null;
+  }
+  _analyser = null;
+  _silenceStart = null;
+}
+
 
 const voiceRecorderModule = {
   startRecording,
