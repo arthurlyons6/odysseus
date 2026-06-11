@@ -159,6 +159,7 @@ KNOWN_CONTEXT_WINDOWS = {
 
     # --- Qwen ---
     'qwen3': 131072,
+    'qwen2.5:3b': 8192,
     'qwen2.5': 131072,
     'qwen2': 32768,
     'qwq': 32768,
