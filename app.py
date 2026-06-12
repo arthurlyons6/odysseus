@@ -867,6 +867,12 @@ async def _lifespan(app):
 app.router.lifespan_context = _lifespan
 
 
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("app:app", host="127.0.0.1", port=7000, log_level="info")
+
+
 async def _startup_event():
     global upload_cleanup_task
     logger.info("Application starting up...")
