@@ -136,7 +136,7 @@ def _maybe_cascade_calendar_event(task) -> None:
 class TaskCreate(BaseModel):
     name: Optional[str] = None
     prompt: Optional[str] = None
-    task_type: str = "llm"                        # "llm" | "action" | "research"
+    task_type: str = "llm"                        # "llm" | "action" | "research" | "subagent"
     action: Optional[str] = None                  # builtin action name
     schedule: Optional[str] = None                # "once" | "daily" | "weekly" | "monthly" | "cron"
     scheduled_time: str = "09:00"                 # HH:MM
@@ -490,20 +490,42 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             else:
                 name = "Untitled Task"
 
+        # Set defaults for subagent tasks to avoid leaking full task UX into an
+        # autonomous runner context.
+        if (req.task_type or "llm") == "subagent":
+            req.task_type = req.task_type or "subagent"
+            if not req.model:
+                req.model = "gpt-4o-mini"
+            subagent_meta = {"max_tool_calls": 12, "timeout": 300, "allowed_tools": ["web_search", "terminal", "read_file", "write_file", "patch"]}
+            if req.prompt:
+                try:
+                    prompt_obj = json.loads(req.prompt) if isinstance(req.prompt, str) else req.prompt
+                    if isinstance(prompt_obj, dict):
+                        prompt_obj.setdefault("subagent_meta", subagent_meta)
+                        req.prompt = json.dumps(prompt_obj)
+                    else:
+                        req.prompt = json.dumps({"prompt": req.prompt, "subagent_meta": subagent_meta})
+                except Exception:
+                    req.prompt = json.dumps({"prompt": req.prompt, "subagent_meta": subagent_meta})
+            else:
+                # Prompt is required otherwise; handled earlier in validation.
+                pass
+
         # Compute next_run for schedule-triggered tasks
         next_run = None
         sched_date = None
         if req.trigger_type == "schedule":
-            if req.schedule == "once" and req.scheduled_date:
-                try:
-                    sched_date = datetime.fromisoformat(req.scheduled_date.replace("Z", "+00:00")).replace(tzinfo=None)
-                except ValueError:
-                    raise HTTPException(400, "Invalid scheduled_date format")
-            next_run = compute_next_run(
-                req.schedule, req.scheduled_time,
-                req.scheduled_day, sched_date,
-                cron_expression=req.cron_expression,
-            )
+            if req.task_type != "subagent":
+                if req.schedule == "once" and req.scheduled_date:
+                    try:
+                        sched_date = datetime.fromisoformat(req.scheduled_date.replace("Z", "+00:00")).replace(tzinfo=None)
+                    except ValueError:
+                        raise HTTPException(400, "Invalid scheduled_date format")
+                next_run = compute_next_run(
+                    req.schedule, req.scheduled_time,
+                    req.scheduled_day, sched_date,
+                    cron_expression=req.cron_expression,
+                )
 
         # Generate webhook token if needed
         webhook_token = None

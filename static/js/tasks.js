@@ -1081,52 +1081,78 @@ function _showForm(existing, initTaskType, initTriggerType) {
         <label class="task-form-label">${taskType === 'research' ? 'Research question' : 'Prompt'}</label>
         <textarea id="task-form-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="${placeholder}">${existing?.prompt || ''}</textarea>
       `;
-    } else {
+    } else if (taskType === 'subagent') {
+      const safeSubagentTarget = (existing && existing.action) ? _esc(existing.action) : '';
       typeOpts.innerHTML = `
-        <label class="task-form-label">Action</label>
-        <select id="task-form-action" class="task-form-input">
-          <option value="">Loading…</option>
-        </select>
-        <div id="task-form-action-extra"></div>
+        <label class="task-form-label">Subagent target</label>
+        <input id="task-form-subagent-target" class="task-form-input" placeholder="bounded.subagent.slug" value="${safeSubagentTarget}" autocomplete="off" />
+        <div id="subagent-bounded-config" style="margin-top:6px;">
+          <div class="task-form-subagent-config" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;">
+            <div>
+              <label class="task-form-label">Toolset</label>
+              <select id="task-form-toolset" class="task-form-input">
+                <option value="default" selected>Default</option>
+                <option value="minimal">Minimal</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div>
+              <label class="task-form-label">Timeout (seconds)</label>
+              <input id="task-form-subagent-timeout" class="task-form-input" type="number" min="10" max="600" value="${(existing && existing.timeout) || 60}" />
+            </div>
+            <div>
+              <label class="task-form-label">Max tool calls</label>
+              <input id="task-form-subagent-max-calls" class="task-form-input" type="number" min="1" max="20" value="${(existing && existing.max_tool_calls) || 4}" />
+            </div>
+          </div>
+        </div>
       `;
-      const syncActionExtra = async () => {
-        const sel = document.getElementById('task-form-action');
-        const extra = document.getElementById('task-form-action-extra');
-        if (!sel || !extra) return;
-        if (sel.value !== 'check_email_urgency') {
-          extra.innerHTML = '';
-          return;
-        }
-        extra.innerHTML = `
-          <label class="task-form-label">Email triage rules</label>
-          <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
-          <div class="memory-desc" style="font-size:11px;margin-top:4px;">Pause/resume and schedule are controlled by this task. It tags urgent, reply-soon, newsletter, marketing, and spam. Urgent/reply-soon emails use your reminder settings.</div>
-        `;
-        const settings = await _fetchUrgentEmailSettings();
-        const promptEl = document.getElementById('task-form-urgent-email-prompt');
-        if (promptEl && !promptEl.dataset.loaded) {
-          promptEl.value = settings.urgent_email_prompt || '';
-          promptEl.dataset.loaded = '1';
-        }
-        const notifEl = document.getElementById('task-form-notif');
-        if (notifEl && !existing?.id) notifEl.checked = false;
-      };
-      _fetchActions().then(actions => {
-        const sel = document.getElementById('task-form-action');
-        if (!sel) return;
-        sel.innerHTML = '';
-        for (const a of actions) {
-          const opt = document.createElement('option');
-          opt.value = a.name;
-          opt.textContent = `${a.name} — ${a.description}`;
-          if (existing?.action === a.name) opt.selected = true;
-          sel.appendChild(opt);
-        }
-        sel.addEventListener('change', syncActionExtra);
-        syncActionExtra();
-      });
-    }
-  }
+      } else {
+                typeOpts.innerHTML = `
+                  <label class="task-form-label">Action</label>
+                  <select id="task-form-action" class="task-form-input">
+                    <option value="">Loading…</option>
+                  </select>
+                  <div id="task-form-action-extra"></div>
+                `;
+                const syncActionExtra = async () => {
+                  const sel = document.getElementById('task-form-action');
+                  const extra = document.getElementById('task-form-action-extra');
+                  if (!sel || !extra) return;
+                  if (sel.value !== 'check_email_urgency') {
+                    extra.innerHTML = '';
+                    return;
+                  }
+                  extra.innerHTML = `
+                    <label class="task-form-label">Email triage rules</label>
+                    <textarea id="task-form-urgent-email-prompt" class="task-form-input task-form-textarea" rows="4" placeholder="What should count as urgent? e.g. deadlines, blockers, people waiting outside."></textarea>
+                    <div class="memory-desc" style="font-size:11px;margin-top:4px;">Pause/resume and schedule are controlled by this task. It tags urgent, reply-soon, newsletter, marketing, and spam. Urgent/reply-soon emails use your reminder settings.</div>
+                  `;
+                  const settings = await _fetchUrgentEmailSettings();
+                  const promptEl = document.getElementById('task-form-urgent-email-prompt');
+                  if (promptEl && !promptEl.dataset.loaded) {
+                    promptEl.value = settings.urgent_email_prompt || '';
+                    promptEl.dataset.loaded = '1';
+                  }
+                  const notifEl = document.getElementById('task-form-notif');
+                  if (notifEl && !existing?.id) notifEl.checked = false;
+                };
+                _fetchActions().then(actions => {
+                  const sel = document.getElementById('task-form-action');
+                  if (!sel) return;
+                  sel.innerHTML = '';
+                  for (const a of actions) {
+                    const opt = document.createElement('option');
+                    opt.value = a.name;
+                    opt.textContent = `${a.name} — ${a.description}`;
+                    if (existing?.action === a.name) opt.selected = true;
+                    sel.appendChild(opt);
+                  }
+                  sel.addEventListener('change', syncActionExtra);
+                  syncActionExtra();
+                });
+              }
+            }
 
   typeToggle.addEventListener('click', (e) => {
     const btn = e.target.closest('.task-toggle-btn');
