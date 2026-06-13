@@ -349,6 +349,47 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
             finally:
                 _db.close()
 
+        if not endpoint_url and not endpoint_id and not skip_val:
+            # No endpoint selected from the caller; treat this as creating from
+            # the configured global defaults, so we don't immediately 400.
+            # This default is meant to be enforced even when we cannot resolve
+            # a matching endpoint (default-model fallback below).
+            settings = _load_settings()
+            _def_model_now = (
+                (settings.get("default_model") or "")
+                .strip()
+                or "stepfun/step-3.7-flash:free"
+            )
+            _def_ep = ""
+            _def_base = ""
+            _def_key = ""
+            _def_id_raw = (
+                (settings.get("default_endpoint_id") or "")
+                .strip()
+                or "22dd034c"
+            )
+            if _def_id_raw:
+                from core.database import ModelEndpoint
+                _db_d = SessionLocal()
+                try:
+                    _ep = (
+                        _db_d.query(ModelEndpoint)
+                        .filter(ModelEndpoint.id == _def_id_raw, ModelEndpoint.is_enabled == True)
+                        .first()
+                    )
+                finally:
+                    _db_d.close()
+                if _ep:
+                    _def_ep = _ep.id
+                    _def_base = _ep.base_url or ""
+                    _def_key = _ep.api_key or ""
+                    if _def_base:
+                        endpoint_url = build_chat_url(normalize_base(_def_base))
+                        endpoint_base_url = _def_base
+                        endpoint_api_key = _def_key
+                        endpoint_id = _def_ep
+                        model = _def_model_now
+
         if not endpoint_url and not skip_val:
             raise HTTPException(400, "endpoint_url is required (choose from /api/models)")
 
@@ -383,7 +424,11 @@ def setup_session_routes(session_manager: SessionManager, config: dict, webhook_
             _NON_CHAT = ("text-embedding", "embedding", "tts-", "whisper",
                          "text-moderation", "moderation-", "dall-e", "rerank")
             chat_ids = [m for m in ids if not any(p in m.lower() for p in _NON_CHAT)]
-            model_to_use = (chat_ids or ids)[0]
+            filtered = chat_ids or ids
+            # Keep the configured active free Nous model if it is available at
+            # this endpoint so the app doesn't fall back to a local model on
+            # session creation.
+            model_to_use = "stepfun/step-3.7-flash:free" if "stepfun/step-3.7-flash:free" in filtered else filtered[0]
         else:
             from src.llm_core import list_model_ids
             import os as _os

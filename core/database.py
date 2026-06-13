@@ -548,8 +548,8 @@ class ScheduledTask(TimestampMixin, Base):
     owner          = Column(String, nullable=True, index=True)
     name           = Column(String, nullable=False, default="Untitled Task")
     prompt         = Column(Text, nullable=True)              # LLM prompt (for task_type="llm")
-    task_type      = Column(String, default="llm")            # "llm" | "action"
-    action         = Column(String, nullable=True)            # builtin action name (for task_type="action")
+    task_type      = Column(String, default="llm")            # "llm" | "action" | "subagent"
+    action         = Column(String, nullable=True)            # builtin action name (for task_type="action") or target for delegation for "subagent"
     schedule       = Column(String, nullable=True)            # "once", "daily", "weekly", "monthly"
     scheduled_time = Column(String, nullable=True)            # "HH:MM" (24h, stored UTC)
     scheduled_day  = Column(Integer, nullable=True)           # day-of-week 0=Mon for weekly, day-of-month for monthly
