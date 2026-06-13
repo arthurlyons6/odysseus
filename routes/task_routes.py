@@ -478,6 +478,8 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             raise HTTPException(400, "Event name is required for event-triggered tasks")
         if req.trigger_type == "event" and not req.trigger_count:
             raise HTTPException(400, "Trigger count is required for event-triggered tasks")
+        if req.task_type == "subagent" and not req.prompt and not req.action:
+            raise HTTPException(400, "Prompt or action is required for subagent tasks")
 
         # Auto-generate name
         name = req.name
