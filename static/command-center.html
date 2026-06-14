@@ -1,0 +1,257 @@
+<!-- Odysseus Private AI Command Center — Command Center Interface -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Odysseus Command Center</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #0e1216;
+      --bg2: #141a20;
+      --bg3: #1c242c;
+      --fg: #eaf0f8;
+      --muted: #9eaab9;
+      --border: rgba(255,255,255,0.06);
+      --accent: #eec050;
+      --good: #3ddb78;
+      --bad: #f07070;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+    }
+    header {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; gap: 18px; padding: 22px 28px;
+      background: rgba(14,18,22,0.88); backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 800; letter-spacing: 0.1em; color: var(--fg);
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .mark {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: linear-gradient(135deg,#eec050,#c48c27);
+      display: inline-grid; place-items: center; color: #0e1216; font-weight: 900; font-size: 11px;
+    }
+    .nav-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+    .nav-pills a {
+      color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600;
+      padding: 8px 10px; border-radius: 10px; border: 1px solid transparent;
+    }
+    .nav-pills a:hover, .nav-pills a.active {
+      color: var(--fg); border-color: var(--border); background: var(--bg2);
+    }
+    .spacer { flex: 1; }
+    .pill {
+      font-size: 12px; font-weight: 600; padding: 6px 10px;
+      border-radius: 999px; border: 1px solid var(--border); background: var(--bg2);
+      color: var(--muted);
+    }
+    main { padding: 28px; }
+    .grid {
+      display: grid; gap: 18px;
+      grid-template-columns: repeat(12, minmax(0,1fr));
+    }
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-3 { grid-column: span 3; }
+    .col-12 { grid-column: span 12; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px 18px;
+    }
+    .card h2 {
+      margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+    }
+    .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .metric { padding: 14px; border-radius: 14px; background: var(--bg2); border: 1px solid var(--border); }
+    .metric .label { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .metric .span1 { color: var(--fg); font-weight: 800; font-size: 26px; margin-top: 6px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .row:last-child { border-bottom: none; }
+    .title { font-weight: 600; font-size: 14px; color: var(--fg); }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .attrs { display: flex; gap: 8px; align-items: center; }
+    .badge {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      padding: 4px 8px; border-radius: 10px;
+      background: var(--bg2); border: 1px solid var(--border); color: var(--muted);
+    }
+    .badge.ok { color: var(--good); border-color: rgba(61,219,120,0.22); background: rgba(61,219,120,0.08); }
+    .badge.err { color: var(--bad); border-color: rgba(240,112,112,0.22); background: rgba(240,112,112,0.08); }
+    .badge.warn { color: #f5c842; border-color: rgba(245,200,66,0.22); background: rgba(245,200,66,0.08); }
+    .muted { color: var(--muted); }
+    .hidden { display: none !important; }
+    .empty { color: var(--muted); font-size: 13px; }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    button {
+      background: #0e1216; color: var(--fg); border: 1px solid var(--border);
+      padding: 8px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    button:hover { background: #11171d; }
+    .cta {
+      background: linear-gradient(135deg,#eec050,#f2d578);
+      color: #0c0b09; border: none; padding: 10px 14px;
+      font-size: 13px; font-weight: 800;
+    }
+    .cta:hover { filter: saturate(1.05); }
+    .learn-link { color: var(--accent); text-decoration: none; font-weight: 700; font-size: 13px; }
+    @media (max-width: 1100px) {
+      .col-3, .col-4, .col-6 { grid-column: span 6; }
+    }
+    @media (max-width: 760px) {
+      .col-3, .col-4, .col-6, .col-12 { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="mark">O</span>ODYSSEUS</div>
+    <nav class="nav-pills">
+      <a href="/" class="active">Command</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/tasks">Tasks</a>
+      <a href="/notes">Notes</a>
+      <a href="/memory">Memory</a>
+      <a href="/email">Email</a>
+      <a href="/gallery">Files</a>
+    </nav>
+    <div class="spacer" />
+    <div class="attrs">
+      <div class="pill" id="identity-pill">AUTH ...</div>
+      <div class="pill" id="live-pill">LIVE</div>
+    </div>
+  </header>
+  <main>
+    <div class="grid">
+      <section class="card col-6">
+        <h2>Mission Control</h2>
+        <div class="metric-grid">
+          <div class="metric">
+            <div class="label">Active Missions</div>
+            <div class="span1" id="active">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Total Agents</div>
+            <div class="span1" id="agents">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Projects</div>
+            <div class="span1" id="projects">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Pending Approvals</div>
+            <div class="span1" id="approvals">0</div>
+          </div>
+        </div>
+      </section>
+      <section class="card col-3">
+        <h2>System Health</h2>
+        <div id="health-body" class="empty">checking…</div>
+      </section>
+      <section class="card col-3">
+        <h2>Workspace</h2>
+        <div id="workspace-body" class="empty">loading…</div>
+      </section>
+      <section class="card col-6">
+        <h2>Mission Roster</h2>
+        <div id="mission-roster" class="empty">loading…</div>
+      </section>
+      <section class="card col-6">
+        <h2>Approval Queue</h2>
+        <div id="approval-queue" class="empty">loading…</div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const API = window.location.origin;
+    async function getJSON(path){ const r = await fetch(`${API}${path}`, {credentials:'same-origin'}); if (!r.ok) throw new Error(`${path} ${r.status}`); return r.json(); }
+
+    function badge(status){
+      const s = (status || '').toLowerCase();
+      const cls = (s.includes('active') || s.includes('healthy') || s.includes('ready') || s.includes('completed')) ? 'ok' : (s.includes('error') || s.includes('unhealthy')) ? 'err' : 'warn';
+      return `<span class="badge ${cls}">${s || 'unknown'}</span>`;
+    }
+
+    async function render(){
+      let health = {}, auth = {}, asyncAgents = {items: []}, tasks = [];
+      try{ health = await getJSON('/api/health'); } catch(e){ health ||= {}; health._err = true; }
+      try{ auth = await getJSON('/api/auth/status'); } catch(e){ auth ||= {}; }
+      try{ asyncAgents = await getJSON('/api/async-agents'); } catch(e){}
+      try{ tasks = await getJSON('/api/tasks').then(d=>Array.isArray(d.tasks)?d.tasks:[]).catch(()=>[]); } catch(e){}
+
+      document.getElementById('identity-pill').textContent = `AUTH ${auth.username || '...'} ${auth.ready ? '' : '(unready)'}`;
+      document.getElementById('identity-pill').classList.toggle('ok', !!auth.ready);
+
+      const hp = document.getElementById('health-body');
+      if (health._err) {
+        hp.innerHTML = `<div class="empty">Unable to load system health at this moment.</div>`;
+      } else {
+        const rows = [
+          ['Platform', health.status || health.state || 'unknown'],
+          ['Runtime', health.runtime_status || ''],
+          ['Hermes', health.hermes_status || ''],
+          ['Database', health.db_status || ''],
+          ['Env', health.env || ''],
+          ['Update', String(!!health.update_available)],
+        ];
+        hp.innerHTML = rows.map(([k,v]) => `<div class="row"><div><div class="title">${k}</div></div><div class="attrs">${badge(v)}</div></div>`).join('');
+      }
+
+      const agents = Array.isArray(asyncAgents.items) ? asyncAgents.items : [];
+      const active = agents.filter((x) => String(x.status || '').toLowerCase() === 'active').length;
+
+      document.getElementById('active').textContent = String(active);
+      document.getElementById('agents').textContent = String(agents.length);
+      document.getElementById('projects').textContent = agents.length ? agents.length : '0';
+
+      const rosters = document.getElementById('mission-roster');
+      if (!agents.length) rosters.innerHTML = '<div class="empty">No agents registered.</div>';
+      else rosters.innerHTML = agents.map((x) => {
+        const role = x.role || '';
+        const owner = (x.reporting && x.reporting.owner) || '';
+        const tags = Array.isArray(x.tags) ? x.tags.join(', ') : '';
+        return `<div class="row">
+          <div>
+            <div class="title">${x.display_name || x.agent_id}</div>
+            <div class="sub">${role}${owner ? ' · ' + owner : ''}${tags ? ' · ' + tags : ''}</div>
+          </div>
+          <div class="attrs">${badge(x.status)}</div>
+        </div>`;
+      }).join('');
+
+      const pending = tasks.filter((t) => String(t.status || '').toLowerCase() === 'pending').slice(0, 25);
+      document.getElementById('approvals').textContent = String(pending.length);
+      const aq = document.getElementById('approval-queue');
+      if (!pending.length) aq.innerHTML = '<div class="empty">No pending approvals.</div>';
+      else aq.innerHTML = pending.map((t) => `<div class="row"><div><div class="title">${t.task_id || t.id || 'task'}</div><div class="sub">${t.kind || 'task'}</div></div><div class="attrs">${badge(t.status)}</div></div>`).join('');
+
+      // Workspace quick-peek
+      const wspace = document.getElementById('workspace-body');
+      try {
+        const workspaceFiles = await getJSON('/api/files').catch(() => ({files: []}));
+        if (!workspaceFiles) workspaceFiles = {files: []};
+        const files = Array.isArray(workspaceFiles.files) ? workspaceFiles.files : [];
+        if (!files.length) wspace.innerHTML = '<div class="empty">No files detected.</div>';
+        else wspace.innerHTML = files.slice(0, 12).map((f) => `<div class="row"><div><div class="title">${f.name || f.path || 'file'}</div></div><div class="attrs">${badge(f.status || '-')}</div></div>`).join('');
+      } catch (_) {
+        wspace.innerHTML = '<div class="empty">Workspace endpoints not yet available in this build.</div>';
+      }
+
+      document.getElementById('live-pill').classList.toggle('ok', !health._err);
+    }
+
+    render();
+    setInterval(render, 8000);
+  </script>
+</body>
+</html>

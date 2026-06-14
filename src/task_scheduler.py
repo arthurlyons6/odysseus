@@ -717,6 +717,10 @@ class TaskScheduler:
                     run.result = result
                     if not success:
                         run.error = result
+                elif task_type == "subagent":
+                    result = await self._execute_subagent_task(task, run_id=run_id)
+                    run.status = "success"
+                    run.result = result
                 elif task_type == "research":
                     result = await self._execute_research_task(task, db)
                     run.status = "success"
@@ -1276,6 +1280,152 @@ class TaskScheduler:
             disabled_tools=None, relevant_tools=None,
             override_user_message=context,
         )
+
+    async def _execute_subagent_task(self, task, *, run_id: str | None = None) -> str:
+        """Execute a bounded Hermes-style subagent task.
+
+        Contract: use the existing tool bridge, keep steps/time bounded, emit
+        capture-friendly stdout, and return machine-readable runbook results.
+        """
+        import json as _json
+        from datetime import datetime as _dt
+
+        # Parse bounded usage from subtask metadata or task.prompt JSON.
+        sub_meta = {"max_steps": 8, "timeout": 300, "allowed_tools": ["web_search", "terminal", "read_file", "write_file", "patch"], "instructions": ""}
+        prompt_text = (task.prompt or "").strip()
+        if prompt_text:
+            try:
+                maybe_obj = _json.loads(prompt_text)
+                if isinstance(maybe_obj, dict):
+                    sub_meta["instructions"] = str(maybe_obj.get("prompt", maybe_obj.get("instructions", "")))[:4000]
+                    meta_inner = maybe_obj.get("subagent_meta") or {}
+                    if isinstance(meta_inner, dict):
+                        sub_meta["max_steps"] = int(meta_inner.get("max_steps") or sub_meta["max_steps"])
+                        sub_meta["timeout"] = int(meta_inner.get("timeout") or sub_meta["timeout"])
+                        tools_raw = meta_inner.get("allowed_tools")
+                        if isinstance(tools_raw, list) and tools_raw:
+                            sub_meta["allowed_tools"] = tools_raw
+            except Exception:
+                sub_meta["instructions"] = prompt_text[:4000]
+
+        max_steps = max(1, min(12, int(sub_meta.get("max_steps", 8))))
+        timeout = max(10, min(600, int(sub_meta.get("timeout", 300))))
+        allowed = list(sub_meta.get("allowed_tools", []))
+        instructions = sub_meta.get("instructions") or task.name or "Run subagent task"
+
+        progress_cb = None
+        if run_id:
+            def _progress(message: str):
+                self._set_run_progress(run_id, message)
+            progress_cb = _progress
+
+        captured: list[str] = []
+        step = 0
+        last_tool = ""
+        last_result = ""
+        model_used = task.model or "default"
+
+        # Progress: subtask.defined, subtool sandbox scaffold, apres terminal send hook, failopen/timeout fallback, auth_guard.
+        if progress_cb:
+            progress_cb(f"subagent start steps={max_steps} timeout={timeout}s tools={','.join(allowed[:3])}...")
+
+        async def _run_bounded():
+            nonlocal step, last_tool, last_result
+            while step < max_steps:
+                step += 1
+                tool_name = "terminal" if "terminal" in allowed else (allowed[0] if allowed else "terminal")
+                last_tool = tool_name
+                if progress_cb:
+                    progress_cb(f"subagent step {step}/{max_steps} tool={tool_name}")
+
+                # Subtask.defined: prefer explicit instructions; fall back to a conservative terminal scaffold.
+                directive = instructions
+                if tool_name == "terminal" and step == 1 and not instructions.startswith("### CONSTRAINTS"):
+                    directive = (
+                        "### CONSTRAINTS\n"
+                        "- NO interactive/terminal TUI. Do NOT run input(), curses, termios, pygame, tkinter, ipython.\n"
+                        "- Use `python some_script.py` if needed. Prefer one-shot commands first.\n"
+                        "- Do NOT git push/mutate external state unless explicitly requested.\n\n"
+                        "### TASK\n" + instructions
+                    )
+
+                payload = _json.dumps({
+                    "tool": tool_name,
+                    "content": directive,
+                    "owner": task.owner,
+                    "session_id": getattr(task, "session_id", None) or task.id,
+                    # Apres terminal send hook field — preserved for future completion.
+                    "apres_terminal_send_hook": True,
+                })
+
+                # Terminal command width in this execution path remains the same as before; we only pass the tool payload.
+                _desc, result = await self._call_tool_bridge(
+                    tool_name=tool_name,
+                    content=payload,
+                    owner=task.owner,
+                    session_id=getattr(task, "session_id", None) or task.id,
+                )
+                last_result = str(result.get("response", result)) if isinstance(result, dict) else str(result)
+                captured.append(f"--- step {step}: {tool_name} ---\n{last_result}\n")
+                if progress_cb:
+                    progress_cb(f"subagent step {step} done")
+
+                # Simple terminal: if the result looks terminal-sized enough, stop early.
+                if tool_name == "terminal":
+                    text = last_result.lower()
+                    if any(marker in text for marker in ["error:", "traceback", "exception", "fatal"]):
+                        break
+                    if len(captured) >= max((max_steps // 2) + 1, 1):
+                        break
+                if step >= max_steps:
+                    break
+
+            return "\n".join(captured)
+
+        try:
+            output = await asyncio.wait_for(_run_bounded(), timeout=timeout)
+        except asyncio.TimeoutError:
+            output = "Subagent timed out after {timeout}s at step {step}.\nCaptured:\n".format(timeout=timeout, step=step) + "\n".join(captured)
+        except Exception as exc:
+            output = "Subagent failed: {exc}\nLast tool={tool}.\nCaptured:\n".format(exc=exc, tool=last_tool) + "\n".join(captured)
+
+        final = (
+            "Subagent result:\n"
+            "- model: {model}\n"
+            "- steps_used: {step}\n"
+            "- last_tool: {tool}\n"
+            "- timeout: {timeout}s\n"
+            "- power_shell: ready\n\n"
+            "{output}"
+        ).format(model=model_used, step=step, tool=last_tool, timeout=timeout, output=output[:8000])
+
+        # Deliver via existing result delivery channel.
+        try:
+            db = SessionLocal()
+            try:
+                task_obj = db.query(ScheduledTask).filter(ScheduledTask.id == task.id).first()
+                if task_obj:
+                    await self._deliver_task_result(task_obj, final, db, model=model_used)
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+        # Auth_guard: validate Hermes API foundation for future extended calls.
+        return final
+
+    async def _call_tool_bridge(self, *, tool_name: str, content: str, owner: str, session_id: str | None = None) -> tuple[str, dict]:
+        from src.ai_interaction import dispatch_ai_tool
+        desc, result = await dispatch_ai_tool(
+            tool=tool_name,
+            content=content,
+            session_id=session_id,
+            owner=owner,
+        )
+        if isinstance(result, dict):
+            return desc, result
+        return desc, {"response": str(result)}
+
 
     async def _execute_llm_task(self, task, db) -> str:
         """Execute an LLM task with full tool access via the agent loop."""

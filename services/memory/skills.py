@@ -54,6 +54,42 @@ def _to_float(x, default: float = 0.0) -> float:
         return default
 
 
+_REQUIRED_NEW_FRONTMATTER = {"name", "description", "category", "version"}
+_RECOMMENDED_CATEGORIES = {
+    "workflow", "skill-tag", "tool", "retrieval", "domain", "governance",
+}
+_TAG_NORMALIZATIONS = {
+    "gpu": "hardware",
+    "hardware": "hardware",
+    "network": "infrastructure",
+    "networking": "infrastructure",
+    "server": "infrastructure",
+    "python": "development",
+    "document": "documents",
+    "documents": "documents",
+    "search": "retrieval",
+    "email": "messaging",
+    "calendar": "messaging",
+    "linux": "system",
+    "arch": "system",
+    "system": "system",
+    "ssh": "infrastructure",
+    "installation": "ops",
+    "install": "ops",
+    "ops": "ops",
+}
+
+
+def _validate_new_skill_frontmatter(sk, manager: "SkillsManager") -> List[str]:
+    """Check that required new-schema fields are present.
+
+    Returns a list of human-readable problems. Empty list means the skill
+    passes the import quality gate.
+    """
+    missing = [f for f in _REQUIRED_NEW_FRONTMATTER if not getattr(sk, f, None)]
+    return sorted(missing)
+
+
 # ---------------------------------------------------------------------------
 # SkillsManager
 # ---------------------------------------------------------------------------
@@ -118,9 +154,21 @@ class SkillsManager:
             return entry
         return {}
 
-    def set_audit(self, name: str, verdict: str, by_teacher: bool = False,
-                  worker_model: str = "", teacher_model: str = "",
-                  owner: Optional[str] = None) -> None:
+    def set_audit(
+        self,
+        name: str,
+        verdict: str,
+        by_teacher: bool = False,
+        worker_model: str = "",
+        teacher_model: str = "",
+        owner: Optional[str] = None,
+        *,
+        approved_by: Optional[str] = None,
+        approved_role: Optional[str] = None,
+        approved_at: Optional[float] = None,
+        publish_status: Optional[str] = None,
+        publish_reason: Optional[str] = None,
+    ) -> None:
         """Record the last test/audit result for a skill in the usage sidecar
         (so it surfaces in load() without touching SKILL.md). Drives the
         'verified' check + teacher mark on the card."""
@@ -135,6 +183,16 @@ class SkillsManager:
         if teacher_model:
             e["audit_teacher_model"] = teacher_model
         e["audited_at"] = _t.time()
+        if approved_by:
+            e["approved_by"] = str(approved_by)
+        if approved_role:
+            e["approved_role"] = str(approved_role)
+        if approved_at:
+            e["approved_at"] = float(approved_at)
+        if publish_status:
+            e["publish_status"] = str(publish_status)
+        if publish_reason:
+            e["publish_reason"] = str(publish_reason)
         self._save_usage(usage)
 
     def set_necessity(self, name: str, necessary: bool,
@@ -397,13 +455,25 @@ class SkillsManager:
             raise SkillImportError("empty bundle")
         _rel, skill_md = pick_skill_md(files)
         sk = Skill.from_markdown(skill_md)
+        _validate_new_skill_frontmatter(sk, self)
+
         nm = slugify(sk.name or _rel.split("/")[-2] or "skill")
         cat = slugify(category or sk.category or "imported", fallback="imported")
 
-        existing = {s["name"] for s in self.load_all()}
+        # Reject imports that would create a duplicate published skill without an
+        # explicit bump — this is the import-quality gate, not just runtime dedup.
+        # Reject imports that would create a duplicate published skill without an
+        # explicit bump — this is the import-quality gate, not just runtime dedup.
+        existing_by_name = {s["name"]: s for s in self.load_all()}
+        existing = existing_by_name.get(nm)
+        if existing and (existing.get("status") or "draft") == "published":
+            raise SkillImportError(
+                f"Refusing to import: skill '{nm}' already exists as published. "
+                f"Update the version or import under a different name."
+            )
         base = nm
         i = 2
-        while nm in existing:
+        while nm in existing_by_name:
             nm = f"{base}-{i}"
             i += 1
 

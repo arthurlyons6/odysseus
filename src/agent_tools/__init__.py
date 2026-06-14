@@ -18,13 +18,14 @@ from src.tool_utils import _truncate, get_mcp_manager, set_mcp_manager
 
 logger = logging.getLogger(__name__)
 
-from .subprocess_tools import BashTool, PythonTool
+from .subprocess_tools import BashTool, PythonTool, PowerShellTool
 from .web_tools import WebSearchTool, WebFetchTool
 from .filesystem_tools import ReadFileTool, WriteFileTool, EditFileTool, LsTool, GlobTool, GrepTool
 
 TOOL_HANDLERS = {
     "bash": BashTool().execute,
     "python": PythonTool().execute,
+    "powershell": PowerShellTool().execute,
     "web_search": WebSearchTool().execute,
     "web_fetch": WebFetchTool().execute,
     "read_file": ReadFileTool().execute,
@@ -73,8 +74,8 @@ TOOL_TAGS = {"bash", "python", "web_search", "web_fetch", "read_file", "write_fi
              "list_serve_presets", "serve_preset", "adopt_served_model",
              "list_cookbook_servers",
              # Other tools the agent reaches for that were also missing.
-             "edit_image", "trigger_research", "manage_research",
-             # Generic loopback to any UI-button endpoint (cookbook,
+             "edit_image", "trigger_research", "manage_research", "powershell",
+             # Generic loopback to any UI-button endpoint
              # gallery, email folders, etc.) — agent uses this when
              # there's no named tool wrapper for the action.
              "app_api"}

@@ -218,11 +218,43 @@
   <link rel="modulepreload" href="/static/js/chat.js">
   <link rel="modulepreload" href="/static/js/ui.js">
   <link rel="modulepreload" href="/static/js/sessions.js">
+  <style>
+    .odysseus-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+      height: 48px; display: flex; align-items: center; gap: 18px;
+      padding: 0 18px; border-bottom: 1px solid rgba(120,120,120,0.18);
+      background: rgba(22,24,26,0.88); backdrop-filter: blur(12px);
+    }
+    .odysseus-nav .brand { font-weight: 700; letter-spacing: 0.04em; }
+    .odysseus-nav .links a {
+      color: inherit; opacity: 0.85; text-decoration: none;
+      font-size: 13px; font-weight: 500;
+    }
+    .odysseus-nav .links a:hover { opacity: 1; }
+    .odysseus-nav .spacer { flex: 1; }
+    .odysseus-nav .status { font-size: 12px; opacity: 0.7; }
+    .odysseus-body { padding-top: 56px; }
+  </style>
   <link rel="modulepreload" href="/static/js/markdown.js">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover" />
 </head>
 <body>
-  <!-- Loading overlay — hides all flashing until app is ready -->
+  <nav class="odysseus-nav">
+    <div class="brand">ODYSSEUS</div>
+    <div class="links">
+      <a href="/">Command</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/tasks">Tasks</a>
+      <a href="/notes">Notes</a>
+      <a href="/memory">Memory</a>
+      <a href="/email">Email</a>
+      <a href="/gallery">Files</a>
+    </div>
+    <div class="spacer" />
+    <div class="status" id="odysseus-status-indicator">loading</div>
+  </nav>
+  <div class="odysseus-body">
+  <!-- BEGIN EXISTING CONTENT -->
   <div id="app-loader" style="position:fixed;inset:0;z-index:99999;background:var(--bg,#282c34);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;transition:opacity .3s">
     <div id="loader-wave" style="color:var(--brand-color,var(--red,#e06c75));font-family:monospace;font-size:11px;opacity:.5">▁▂▃</div>
   </div>

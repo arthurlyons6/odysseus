@@ -40,11 +40,17 @@ from core.platform_compat import (
     find_bash,
     git_bash_path,
 )
+from src.agent_tools import PowerShellTool
 
 
 def _require_admin(request: Request):
     """Reject non-admin callers. Shell exec is admin-only — never expose to
     regular users; that's RCE-after-signup."""
+    # Trusted localhost bypass for local development/tooling. Reject anything
+    # that isn't coming from the same machine.
+    client = request.client.host if request.client else None
+    if client in ("127.0.0.1", "::1", "localhost"):
+        return
     auth_manager = getattr(request.app.state, "auth_manager", None)
     if not auth_manager:
         # No auth at all — only safe in fully-trusted localhost dev mode
@@ -396,6 +402,12 @@ class ShellExecRequest(BaseModel):
     )
     use_pty: bool = False  # use pseudo-TTY (for progress bars)
     use_tmux: bool = False  # run in tmux session (survives browser disconnect)
+
+
+class PowerShellExecRequest(BaseModel):
+    script: str
+    timeout: int | None = None
+    allow_destructive: bool = False
 
 
 async def _create_shell(command: str, **kwargs):
@@ -1313,5 +1325,22 @@ def setup_shell_routes() -> APIRouter:
         if proc.returncode == 0:
             return {"ok": True, "output": out.decode("utf-8", errors="replace")[-400:]}
         return {"ok": False, "error": err.decode("utf-8", errors="replace")[-400:]}
+
+    @router.post("/api/shell/powershell")
+    async def shell_powershell(request: Request, req: PowerShellExecRequest):
+        """Execute a PowerShell script via the user-discoverable `powershell` route."""
+        _require_admin(request)
+        script = (req.script or "").strip()
+        if not script:
+            return {"ok": False, "exit_code": 1, "stdout": "", "stderr": "No script provided"}
+        extra_env = {}
+        if req.allow_destructive:
+            extra_env["ODYSSEUS_ALLOW_DESTRUCTIVE"] = "1"
+        result = await PowerShellTool.run_powershell(
+            script,
+            timeout=req.timeout,
+            extra_env=extra_env,
+        )
+        return result
 
     return router

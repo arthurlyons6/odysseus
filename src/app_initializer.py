@@ -25,6 +25,7 @@ from src.search import update_search_config
 
 logger = logging.getLogger(__name__)
 
+
 def create_directories():
     """Create necessary directories if they don't exist."""
     for directory in (DATA_DIR, PERSONAL_DIR, RUNBOOK_DIR, UPLOAD_DIR):

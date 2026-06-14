@@ -7,6 +7,7 @@ Stores pre-computed embeddings (ChromaDB does not manage embedding).
 """
 
 import logging
+import threading
 from typing import List, Dict, Optional
 
 from src.embedding_lanes import (

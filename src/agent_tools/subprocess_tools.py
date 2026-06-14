@@ -1,12 +1,15 @@
 import asyncio
+import os
 import sys
 import time
 import collections
 from typing import Optional, Callable, Awaitable, Tuple, Dict
+
 from src.constants import MAX_OUTPUT_CHARS
 
-DEFAULT_BASH_TIMEOUT = 60 * 60     # 1 hour
+DEFAULT_BASH_TIMEOUT = 60 * 60
 DEFAULT_PYTHON_TIMEOUT = 60 * 60
+DEFAULT_POWERSHELL_TIMEOUT = 120
 
 PROGRESS_INTERVAL_S = 2.0
 PROGRESS_TAIL_LINES = 12
@@ -100,6 +103,7 @@ async def _run_subprocess_streaming(
         timed_out,
     )
 
+
 class BashTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import _AGENT_WORKDIR, _truncate
@@ -127,6 +131,7 @@ class BashTool:
         output = _truncate(output, MAX_OUTPUT_CHARS)
         return {"output": output or "(no output)", "exit_code": rc or 0}
 
+
 class PythonTool:
     async def execute(self, content: str, ctx: dict) -> dict:
         from src.tool_execution import _AGENT_WORKDIR, _truncate
@@ -153,3 +158,113 @@ class PythonTool:
             output = (output + "\nSTDERR: " + err).strip() if output else "STDERR: " + err
         output = _truncate(output, MAX_OUTPUT_CHARS)
         return {"output": output or "(no output)", "exit_code": rc or 0}
+
+
+class PowerShellTool:
+    """First-class PowerShell execution routed through SubprocessTools."""
+
+    BLOCKED_PREFIXES = (
+        "remove-item ",
+        "rm ",
+        "del ",
+        "rmdir ",
+        "rd ",
+        "clear-item ",
+        "clv ",
+        "format-",
+        "out-null",
+    )
+
+    @staticmethod
+    def _default_cwd() -> str:
+        try:
+            return os.path.expanduser("~")
+        except Exception:
+            return os.getcwd()
+
+    @classmethod
+    async def run_powershell(
+        cls,
+        script: str,
+        *,
+        cwd: Optional[str] = None,
+        timeout: Optional[int] = None,
+        extra_env: Optional[Dict[str, str]] = None,
+    ) -> Dict:
+        """Execute a PowerShell script and return structured output."""
+        allow_destructive = False
+        if isinstance(extra_env, dict):
+            allow_destructive = bool(extra_env.get("ODYSSEUS_ALLOW_DESTRUCTIVE"))
+
+        lowered = script.lower()
+        if not allow_destructive:
+            for prefix in cls.BLOCKED_PREFIXES:
+                if lowered.startswith(prefix) or f" {prefix}" in lowered:
+                    return {
+                        "ok": False,
+                        "exit_code": -1,
+                        "stdout": "",
+                        "stderr": "Blocked: destructive PowerShell pattern detected. "
+                                  "Set allow_destructive=true (in extra_env) if intentional.",
+                    }
+
+        cmd = [
+            "powershell",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            script,
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=cwd or cls._default_cwd(),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=dict(os.environ, **(extra_env or {})),
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout or DEFAULT_POWERSHELL_TIMEOUT
+            )
+            return {
+                "ok": proc.returncode == 0,
+                "exit_code": proc.returncode or 0,
+                "stdout": stdout.decode("utf-8", errors="replace"),
+                "stderr": stderr.decode("utf-8", errors="replace"),
+            }
+        except asyncio.TimeoutError:
+            return {
+                "ok": False,
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Command timed out after {timeout or DEFAULT_POWERSHELL_TIMEOUT}s",
+            }
+        except FileNotFoundError:
+            return {
+                "ok": False,
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": "PowerShell runtime not found on PATH",
+            }
+        except Exception as exc:
+            return {"ok": False, "exit_code": -1, "stdout": "", "stderr": str(exc)}
+
+    async def execute(self, content: str, ctx: dict) -> dict:
+        result = await self.run_powershell(
+            content,
+            cwd=ctx.get("workspace") or self._default_cwd(),
+            extra_env=ctx.get("subproc_env"),
+        )
+        if not result.get("ok"):
+            return {
+                "error": result.get("stderr") or "PowerShell execution failed",
+                "exit_code": result.get("exit_code", -1),
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+            }
+        out = (result.get("stdout") or "").rstrip()
+        err = (result.get("stderr") or "").rstrip()
+        if err:
+            out = (out + "\nSTDERR: " + err).strip() if out else "STDERR: " + err
+        return {"output": out or "(no output)", "exit_code": result.get("exit_code", 0)}

@@ -464,6 +464,23 @@ else:
         "(ChromaDB may not be reachable yet — routes will retry lazily)"
     )
 
+# Surface a tiny /__routes endpoint so we can verify mounted routes in
+# production without spin-up debug tooling. Safe operational introspection:
+# exposes route metadata only, no credentials or secrets.
+@app.get("/__routes")
+async def _debug_routes():
+    return {
+        "items": [
+            {
+                "path": getattr(r, "path", None),
+                "methods": sorted(getattr(r, "methods", None) or []),
+                "name": getattr(r, "name", None),
+            }
+            for r in app.routes
+            if hasattr(r, "path")
+        ]
+    }
+
 # ========= IMPORT CONFIG =========
 from src.config import config
 
@@ -641,6 +658,10 @@ app.include_router(setup_task_routes(task_scheduler))
 
 from routes.assistant_routes import setup_assistant_routes
 app.include_router(setup_assistant_routes(task_scheduler))
+
+# Async Agent Registry
+from routes.async_agent_routes import router as async_agent_router
+app.include_router(async_agent_router)
 
 # Calendar (CalDAV)
 from routes.calendar_routes import setup_calendar_routes

@@ -106,7 +106,6 @@ async def register_builtin_servers(mcp_manager):
             else:
                 logger.warning(f"Built-in MCP server failed to connect: {name}")
         except asyncio.CancelledError:
-            logger.warning(f"Built-in MCP server {name} cancelled")
             raise
         except BaseException as e:
             logger.warning(f"Built-in MCP server {name} error: {type(e).__name__}: {e}")
@@ -165,6 +164,13 @@ async def register_builtin_servers(mcp_manager):
                     logger.warning(f"Built-in NPX server failed to connect: {cfg['name']}")
             except asyncio.CancelledError:
                 raise
+            except RuntimeError as e:
+                if "Attempted to exit cancel scope" in str(e):
+                    logger.warning(
+                        f"Built-in NPX server {cfg['name']} cancel-scope error (non-fatal): {e!r}"
+                    )
+                else:
+                    raise
             except BaseException as e:
                 logger.warning(f"Built-in NPX server {cfg['name']} error: {type(e).__name__}: {e}")
 
